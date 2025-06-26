@@ -18,15 +18,13 @@ struct CListNode
     void* data;
 };
 
-/**
- * 可以自定义内存分配的双向循环链表
- */
+
 struct CList
 {
     clist_mem_allocator allocator;
     clist_mem_deallocator deallocator;
     size_t size;
-    CListNode *root;
+    CListNode* root;
 };
 
 void clist_init(CList* clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator)
@@ -38,7 +36,8 @@ void clist_init(CList* clist, clist_mem_allocator allocator, clist_mem_deallocat
     clist->size = 0;
     clist->root = clist->allocator(sizeof CListNode);
     /* 初始化根节点 */
-
+    clist->root->prev = clist->root->next = clist->root;
+    clist->root->data = nullptr;
 }
 
 CListIterator* clist_begin(CList* clist)
@@ -51,9 +50,69 @@ CListIterator* clist_end(CList* clist)
     return clist->root;
 }
 
-void clist_push_front(CList* clist, void* data)
+CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data)
 {
     /* 创建新节点 */
-    auto new_node = clist->allocator(sizeof CListNode);
-    clist_node_insert(new_node, new_node, clist->root, data);
+    auto new_node = (CListNode*)clist->allocator(sizeof CListNode);
+    new_node->next = prev->next;
+    new_node->prev = prev;
+    new_node->data = data;
+
+    prev->next = new_node;
+    new_node->next->prev = new_node;
+
+    return new_node;
+}
+
+void* clist_pop(CList* clist, CListIterator* iter)
+{
+    /* 根节点恒为空，无法删除 */
+    if (iter == clist->root)
+        return nullptr;
+    /* 处理前后节点的指向关系，前后节点一定和iter不是同一个节点 */
+    iter->prev->next = iter->next;
+    iter->next->prev = iter->prev;
+    /* 取出数据 */
+    void* data = iter->data;
+    /* 清空无效指针 */
+    iter->prev = iter->next = iter->data = nullptr;
+    /* 释放节点内存 */
+    clist->deallocator(iter);
+
+    return data;
+}
+
+CListIterator* clist_push_front(CList* clist, void* data)
+{
+    return clist_insert(clist, clist->root, data);
+}
+
+void* clist_pop_front(CList* clist)
+{
+    return clist_pop(clist, clist->root->next);
+}
+
+CListIterator* clist_push_back(CList* clist, void* data)
+{
+    return clist_insert(clist, clist->root->prev, data);
+}
+
+void* clist_pop_back(CList* clist)
+{
+    return clist_pop(clist, clist->root->prev);
+}
+
+size_t clist_size(CList* clist)
+{
+    return clist->size;
+}
+
+void* clist_front(CList* clist)
+{
+    return clist->root->next->data;
+}
+
+void* clist_back(CList* clist)
+{
+    return clist->root->prev->data;
 }

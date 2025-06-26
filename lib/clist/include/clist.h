@@ -17,7 +17,7 @@
 typedef struct CListNode CListIterator;
 
 /**
- * 实现一个最基础的链表数据结构
+ * 实现一个最基础的双向循环链表数据结构，可自定义内存分配与释放，但是不会管data的内存分配与释放
  * 这里同样使用前向声明
  */
 typedef struct CList CList;
@@ -31,14 +31,20 @@ typedef void (*clist_mem_deallocator)(void *);
 
 void clist_init(CList *clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator);
 
+CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data);
+void* clist_pop(CList* clist, CListIterator* iter)
+
 CListIterator *clist_begin(CList *clist);
 CListIterator *clist_end(CList *clist);
 
-void clist_push_front(CList *clist, void *data);
+CListIterator *clist_push_front(CList *clist, void *data);
 void *clist_pop_front(CList *clist);
 
-void clist_push_back(CList *clist, void *data);
-void clist_pop_back(CList *clist);
+CListIterator * clist_push_back(CList *clist, void *data);
+void *clist_pop_back(CList *clist);
 
+size_t clist_size(CList *clist);
+void *clist_front(CList *clist);
+void *clist_back(CList *clist);
 
 #endif //CLIST_H
