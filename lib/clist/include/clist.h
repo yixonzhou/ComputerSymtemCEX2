@@ -37,7 +37,12 @@ typedef void (*clist_mem_deallocator)(void*);
  * @param deallocator 内存释放器
  * @return 初始化后的CList对象指针
  */
-CList* clist_init(clist_mem_allocator allocator, clist_mem_deallocator deallocator);
+CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator deallocator);
+/**
+ * 删除一个clist对象，会尝试使用deallocator删除所有节点的data
+ * @param clist 需要删除的clist对象
+ */
+void clist_destroy(CList* clist);
 
 CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data);
 void* clist_pop(CList* clist, CListIterator* iter);
