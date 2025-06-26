@@ -25,26 +25,28 @@ typedef struct CList CList;
 /**
  * CList用来分配内存的函数，通过在初始化时传入这个函数，clist可以自动在共享内存上分配内存
  */
-typedef void *(*clist_mem_allocator)(size_t);
+typedef void*(*clist_mem_allocator)(size_t);
+/**
+ * CList用来释放内存的函数
+ */
+typedef void (*clist_mem_deallocator)(void*);
 
-typedef void (*clist_mem_deallocator)(void *);
-
-void clist_init(CList *clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator);
+void clist_init(CList* clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator);
 
 CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data);
 void* clist_pop(CList* clist, CListIterator* iter);
 
-CListIterator *clist_begin(CList *clist);
-CListIterator *clist_end(CList *clist);
+CListIterator* clist_begin(CList* clist);
+CListIterator* clist_end(CList* clist);
 
-CListIterator *clist_push_front(CList *clist, void *data);
-void *clist_pop_front(CList *clist);
+CListIterator* clist_push_front(CList* clist, void* data);
+void* clist_pop_front(CList* clist);
 
-CListIterator * clist_push_back(CList *clist, void *data);
-void *clist_pop_back(CList *clist);
+CListIterator* clist_push_back(CList* clist, void* data);
+void* clist_pop_back(CList* clist);
 
-size_t clist_size(CList *clist);
-void *clist_front(CList *clist);
-void *clist_back(CList *clist);
+size_t clist_size(CList* clist);
+void* clist_front(CList* clist);
+void* clist_back(CList* clist);
 
 #endif //CLIST_H
