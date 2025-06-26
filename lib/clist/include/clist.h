@@ -31,7 +31,13 @@ typedef void*(*clist_mem_allocator)(size_t);
  */
 typedef void (*clist_mem_deallocator)(void*);
 
-void clist_init(CList* clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator);
+/**
+ * 初始化一个CList对象，使用allocator分配内存
+ * @param allocator 内存分配器
+ * @param deallocator 内存释放器
+ * @return 初始化后的CList对象指针
+ */
+CList* clist_init(clist_mem_allocator allocator, clist_mem_deallocator deallocator);
 
 CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data);
 void* clist_pop(CList* clist, CListIterator* iter);

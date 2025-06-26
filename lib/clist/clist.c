@@ -27,8 +27,10 @@ struct CList
     CListNode* root;
 };
 
-void clist_init(CList* clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator)
+CList* clist_init(clist_mem_allocator allocator, clist_mem_deallocator deallocator);
 {
+    /* 分配CList内存 */
+    auto clist = (CList*)allocator(sizeof(CList));
     /* 保存内存分配时和释放器 */
     clist->allocator = allocator;
     clist->deallocator = deallocator;
@@ -38,6 +40,8 @@ void clist_init(CList* clist, clist_mem_allocator allocator, clist_mem_deallocat
     /* 初始化根节点 */
     clist->root->prev = clist->root->next = clist->root;
     clist->root->data = nullptr;
+
+    return clist;
 }
 
 CListIterator* clist_begin(CList* clist)
