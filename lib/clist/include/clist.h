@@ -32,7 +32,7 @@ typedef void (*clist_mem_deallocator)(void *);
 void clist_init(CList *clist, clist_mem_allocator allocator, clist_mem_deallocator deallocator);
 
 CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data);
-void* clist_pop(CList* clist, CListIterator* iter)
+void* clist_pop(CList* clist, CListIterator* iter);
 
 CListIterator *clist_begin(CList *clist);
 CListIterator *clist_end(CList *clist);
