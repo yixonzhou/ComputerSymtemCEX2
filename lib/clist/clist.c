@@ -116,3 +116,18 @@ void* clist_back(CList* clist)
 {
     return clist->root->prev->data;
 }
+
+CListIterator* clist_iterator_next(CListIterator* iter)
+{
+    return iter->next;
+}
+
+CListIterator* clist_iterator_prev(CListIterator* iter)
+{
+    return iter->prev;
+}
+
+void* clist_iterator_data(CListIterator* iter)
+{
+    return iter->data;
+}
