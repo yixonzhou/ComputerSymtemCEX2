@@ -52,6 +52,7 @@ CListIterator* clist_end(CList* clist)
 
 CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data)
 {
+    ++clist->size;
     /* 创建新节点 */
     auto new_node = (CListNode*)clist->allocator(sizeof CListNode);
     new_node->next = prev->next;
@@ -66,6 +67,8 @@ CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data)
 
 void* clist_pop(CList* clist, CListIterator* iter)
 {
+    // todo 检查list为空的情况
+    --clist->size;
     /* 根节点恒为空，无法删除 */
     if (iter == clist->root)
         return nullptr;
