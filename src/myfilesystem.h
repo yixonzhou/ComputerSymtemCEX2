@@ -16,7 +16,7 @@
 typedef struct FileSystem FileSystem;
 
 void filesystem_init();
-void filesystem_destory();
+void filesystem_deinit();
 
 void cd(const char *path);
 void mkdir(const char *path);
