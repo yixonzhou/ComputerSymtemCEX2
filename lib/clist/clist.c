@@ -27,7 +27,7 @@ struct CList
     CListNode* root;
 };
 
-CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator deallocator);
+CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator deallocator)
 {
     /* 分配CList内存 */
     auto clist = (CList*)allocator(sizeof(CList));
@@ -36,7 +36,7 @@ CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator dealloc
     clist->deallocator = deallocator;
     /* 创建根节点为空节点，方便管理 */
     clist->size = 0;
-    clist->root = clist->allocator(sizeof CListNode);
+    clist->root = clist->allocator(sizeof(CListNode));
     /* 初始化根节点 */
     clist->root->prev = clist->root->next = clist->root;
     clist->root->data = nullptr;
@@ -49,8 +49,7 @@ void clist_destroy(CList* clist)
     /* 清除子节点 */
     while (clist_size(clist) > 0)
     {
-        auto data = clist_pop_front(clist);
-        clist->deallocator(data);
+        clist_pop_front(clist);
     }
     /* 清除根节点 */
     clist->deallocator(clist->root);
@@ -72,7 +71,7 @@ CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data)
 {
     ++clist->size;
     /* 创建新节点 */
-    auto new_node = (CListNode*)clist->allocator(sizeof CListNode);
+    auto new_node = (CListNode*)clist->allocator(sizeof(CListNode));
     new_node->next = prev->next;
     new_node->prev = prev;
     new_node->data = data;
@@ -83,24 +82,23 @@ CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data)
     return new_node;
 }
 
-void* clist_pop(CList* clist, CListIterator* iter)
+void clist_pop(CList* clist, CListIterator* iter)
 {
     // todo 检查list为空的情况
     --clist->size;
     /* 根节点恒为空，无法删除 */
     if (iter == clist->root)
-        return nullptr;
+        return;
     /* 处理前后节点的指向关系，前后节点一定和iter不是同一个节点 */
     iter->prev->next = iter->next;
     iter->next->prev = iter->prev;
     /* 取出数据 */
     void* data = iter->data;
+    clist->deallocator(data);
     /* 清空无效指针 */
     iter->prev = iter->next = iter->data = nullptr;
     /* 释放节点内存 */
     clist->deallocator(iter);
-
-    return data;
 }
 
 CListIterator* clist_push_front(CList* clist, void* data)
@@ -108,9 +106,9 @@ CListIterator* clist_push_front(CList* clist, void* data)
     return clist_insert(clist, clist->root, data);
 }
 
-void* clist_pop_front(CList* clist)
+void clist_pop_front(CList* clist)
 {
-    return clist_pop(clist, clist->root->next);
+    clist_pop(clist, clist->root->next);
 }
 
 CListIterator* clist_push_back(CList* clist, void* data)
@@ -118,9 +116,9 @@ CListIterator* clist_push_back(CList* clist, void* data)
     return clist_insert(clist, clist->root->prev, data);
 }
 
-void* clist_pop_back(CList* clist)
+void clist_pop_back(CList* clist)
 {
-    return clist_pop(clist, clist->root->prev);
+    clist_pop(clist, clist->root->prev);
 }
 
 size_t clist_size(CList* clist)

@@ -45,16 +45,16 @@ CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator dealloc
 void clist_destroy(CList* clist);
 
 CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data);
-void* clist_pop(CList* clist, CListIterator* iter);
+void clist_pop(CList* clist, CListIterator* iter);
 
 CListIterator* clist_begin(CList* clist);
 CListIterator* clist_end(CList* clist);
 
 CListIterator* clist_push_front(CList* clist, void* data);
-void* clist_pop_front(CList* clist);
+void clist_pop_front(CList* clist);
 
 CListIterator* clist_push_back(CList* clist, void* data);
-void* clist_pop_back(CList* clist);
+void clist_pop_back(CList* clist);
 
 size_t clist_size(CList* clist);
 void* clist_front(CList* clist);
