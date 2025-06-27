@@ -23,17 +23,19 @@ struct CList
 {
     clist_mem_allocator allocator;
     clist_mem_deallocator deallocator;
+    clist_mem_deallocator data_deallocator;
     size_t size;
     CListNode* root;
 };
 
-CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator deallocator)
+CList* clist_create(clist_mem_allocator allocator, clist_mem_deallocator deallocator, clist_mem_deallocator data_deallocator)
 {
     /* 分配CList内存 */
     auto clist = (CList*)allocator(sizeof(CList));
     /* 保存内存分配时和释放器 */
     clist->allocator = allocator;
     clist->deallocator = deallocator;
+    clist->data_deallocator = data_deallocator;
     /* 创建根节点为空节点，方便管理 */
     clist->size = 0;
     clist->root = clist->allocator(sizeof(CListNode));
@@ -94,7 +96,7 @@ void clist_pop(CList* clist, CListIterator* iter)
     iter->next->prev = iter->prev;
     /* 取出数据 */
     void* data = iter->data;
-    clist->deallocator(data);
+    clist->data_deallocator(data);
     /* 清空无效指针 */
     iter->prev = iter->next = iter->data = nullptr;
     /* 释放节点内存 */
