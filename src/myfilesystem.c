@@ -19,6 +19,7 @@
 #include <string.h>
 
 constexpr size_t FILESYSTEM_NODE_NAME_SIZE = 100;
+constexpr size_t FILESYSTEM_PWD_SIZE = FILESYSTEM_NODE_NAME_SIZE * 10;
 char filesystem_error[FILESYSTEM_NODE_NAME_SIZE];
 
 typedef struct FileSystemNode FileSystemNode;
@@ -56,13 +57,13 @@ struct FileSystem
     FileSystemNode* root; /* 根目录 */
     FileSystemNode* cur_dir; /* 当前目录 */
     size_t pwd_offset;
-    char pwd[FILESYSTEM_NODE_NAME_SIZE * 10]; /* 当前目录路径 */
+    char pwd[FILESYSTEM_PWD_SIZE]; /* 当前目录路径 */
 };
 
 const int SHM_SIZE = 100 * 1024 * 1024;
 const key_t SHM_KEY = 12345;
 const size_t MAGIC_NUMBER_INITED = 0xDEADBEEF, MAGIC_NUMBER_DEINITED = ~MAGIC_NUMBER_INITED;
-const void *SHM_ADDR = (void *)0x0000700000000000;
+const void* SHM_ADDR = (void*)0x0000700000000000;
 
 /* 共享内存的首地址存储该结构 */
 FileSystem* f = nullptr;
@@ -262,6 +263,47 @@ void filesystem_init()
     }
 }
 
+bool path_is_sep(char c)
+{
+    return c == '/' || c == '\\';
+}
+
+/**
+ * 将当前路径变为其上一级路径，并返回新路径的大小, 只处理绝对路径
+ * @param path 需要变化的路径
+ * @param size 当前路径大小
+ * @return 变化后的路径大小
+ */
+size_t path_to_parent_path(char* path, size_t size)
+{
+    // 根目录不动
+    if (size <= 1) {
+        return size;
+    }
+    // 搜索上一个路径分隔符
+    for (--size; size > 1 && !path_is_sep(path[size]); --size) {
+    }
+    return size;
+}
+
+/**
+ * 拼接一级目录到原目录，只能拼接一级目录，被拼接的目录不能带有分隔符
+ * @param path 原路径
+ * @param size 原路径大小
+ * @param new_path 新路径，以'\0'结束
+ * @return 拼接后的路径大小
+ */
+size_t path_join_path(char* path, size_t size, const char* new_path)
+{
+    if (!path_is_sep(path[--size]))
+        path[++size] = '/';
+    for (size_t i = 0; new_path[i] != '\0'; ++i) {
+        path[++size] = new_path[i];
+    }
+    path[++size] = '\0';
+    return size;
+}
+
 void filesystem_deinit()
 {
     if (f == nullptr)
@@ -293,53 +335,93 @@ void filesystem_deinit()
     }
 }
 
+/**
+ * 处理单机目录的切换，出错会回溯
+ * @param name 需要解析的路径名
+ * @param ori_dir 原始目录，发生错误时恢复状态使用
+ * @param ori_offset 原始pwd便宜
+ * @param ori_pwd 原始pwd
+ * @param arg_path 出错的参数
+ * @return 是否成功
+ */
+bool _cd_parse_sigle_path(const char* name, FileSystemNode *ori_dir, size_t ori_offset, const char* ori_pwd, const char* arg_path)
+{
+    if (strcmp(name, ".") == 0) {
+        // 当前目录, 不变
+    }
+    else if (strcmp(name, "..") == 0) {
+        // 上一级目录
+        if (f->cur_dir != f->root) {
+            f->pwd_offset = path_to_parent_path(f->pwd, f->pwd_offset);
+            f->cur_dir = f->cur_dir->parent;
+        }
+        else {
+            // 根目录的上一级不变
+        }
+    }
+    else {
+        // 查找是否存在该子目录
+        bool find = false;
+        auto subnode_list = (CList*)f->cur_dir->data;
+        for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
+            auto subnode = (FileSystemNode*)clist_iterator_get(it);
+            if (subnode == nullptr)
+                continue;
+            if (strcmp(name, subnode->name) == 0) {
+                // 找到对应子目录
+                find = true;
+                f->pwd_offset = path_join_path(f->pwd, f->pwd_offset, name);
+                f->cur_dir = subnode;
+                break;
+            }
+        }
+        if (!find) {
+            // 没有找到对应子目录
+            f->cur_dir = ori_dir;
+            f->pwd_offset = ori_offset;
+            strcpy(f->pwd, ori_pwd);
+            sprintf(filesystem_error, "cd error, dir \"%s\" not exist!", arg_path);
+            perror(filesystem_error);
+            return false;
+        }
+    }
+    return true;
+}
+
 void cd(const char* path)
 {
     static size_t pos;
     static char name[FILESYSTEM_NODE_NAME_SIZE];
+    static char ori_pwd[FILESYSTEM_PWD_SIZE];
 
     // 保留当前目录，方便查找错误后的回溯
     auto ori_dir = f->cur_dir;
+    auto ori_offset = f->pwd_offset;
+    strcpy(ori_pwd, f->pwd);
 
     // 特殊处理绝对目录
     pos = 0;
+    name[pos] = '\0';
     for (int i = 0; path[i] != '\0'; i++) {
-        if (path[i] == '/' ||path[i] == '\\') {
+        if (path_is_sep(path[i])) {
             // 处理这一级目录操作
             name[pos] = '\0';
-            if (strcmp(name, ".") == 0) {
-                // 当前目录, 不变
-            } else if (strcmp(name, "..") == 0) {
-                // 上一级目录
-                if (f->cur_dir != f->root) {
-                    f->cur_dir = f->cur_dir->parent;
-                } else {
-                    // 根目录的上一级不变
-                }
-            } else {
-                // 查找是否存在该子目录
-                bool find = false;
-                auto subnode_list = (CList*)f->cur_dir->data;
-                for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
-                    auto subnode = (FileSystemNode*)clist_iterator_get(it);
-                    if (subnode == nullptr)
-                        continue;
-                    if (strcmp(name, subnode->name) == 0) {
-                        find = true;
-                        f->cur_dir = subnode;
-                        break;
-                    }
-                }
-                if (!find) {
-                    // 发生错误，回溯结构并报错
-                    f->cur_dir = ori_dir;
-                    sprintf(filesystem_error, "cd error, dir \"%s\" not exist!", path);
-                    perror(filesystem_error);
-                    exit(1);
-                }
+            bool success = _cd_parse_sigle_path(name, ori_dir, ori_offset, ori_pwd, path);
+            if (!success) {
+                // 发生错误，回溯结构并报错
+                exit(1);
             }
             // 复位name
             pos = 0;
+            name[pos] = '\0';
+        } else {
+            // 正常情况下更新name
+            name[pos++] = path[i];
         }
     }
+}
+
+void pwd()
+{
+    printf("%s\n", f->pwd);
 }

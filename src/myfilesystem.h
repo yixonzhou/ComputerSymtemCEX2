@@ -19,6 +19,7 @@ void filesystem_init();
 void filesystem_deinit();
 
 void cd(const char *path);
+void pwd();
 void mkdir(const char *path);
 void rmdir(const char *path);
 void open(const char *path);
