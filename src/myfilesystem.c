@@ -19,6 +19,8 @@
 #include <pthread.h>
 #include <string.h>
 
+constexpr bool DEBUG = false;
+
 constexpr size_t FILESYSTEM_NODE_NAME_SIZE = 100;
 constexpr size_t FILESYSTEM_PWD_SIZE = FILESYSTEM_NODE_NAME_SIZE * 10;
 char filesystem_error[FILESYSTEM_NODE_NAME_SIZE];
@@ -32,7 +34,7 @@ typedef enum FileSystemNodeType
     Directory,
 } FileSystemNodeType;
 
-const char *FileSystemNodeTypeNames[] = {
+const char* FileSystemNodeTypeNames[] = {
     "file",
     "directory",
 };
@@ -68,7 +70,6 @@ struct FileSystem
 
 const int SHM_SIZE = 100 * 1024 * 1024;
 constexpr int DEBUG_FORMAT_SIZE = 1024;
-const char SHM_NAME[] = "../shm/computer_system_shm";
 const size_t MAGIC_NUMBER_INITED = 0xDEADBEEF, MAGIC_NUMBER_DEINITED = ~MAGIC_NUMBER_INITED;
 const void* SHM_ADDR = (void*)0x0000700000000000;
 int shmid = 0;
@@ -76,16 +77,31 @@ int shmid = 0;
 /* 共享内存的首地址存储该结构 */
 FileSystem* f = nullptr;
 
-static int debug_printf(const char *format, ...) __attribute__((format(printf, 1, 2)));
-
-static int debug_printf(const char *format, ...)
+int debug_printf(const char* format, ...)
 {
-    static char debug_format[DEBUG_FORMAT_SIZE];
-    va_list args;
-    va_start(args);
-    // 生成新的格式化字符串, 改变字体颜色
-    sprintf(debug_format, "\033[34m%s\033[0m", format);
-    return vprintf(debug_format, args);
+    if (DEBUG) {
+        static char debug_format[DEBUG_FORMAT_SIZE];
+        va_list args;
+        va_start(args);
+        // 生成新的格式化字符串, 改变字体颜色
+        sprintf(debug_format, "\033[34m%s\033[0m", format);
+        return vprintf(debug_format, args);
+    }
+}
+
+FileSystemNode* filesystem_node_get_subnode(FileSystemNode* node, FileSystemNodeType subnode_type,
+                                            const char* subnode_name)
+{
+    auto subnode_list = (CList*)node->data;
+    for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
+        auto subnode = (FileSystemNode*)clist_iterator_get(it);
+        if (subnode == nullptr)
+            continue;
+        if (subnode->type == subnode_type && strcmp(subnode->name, subnode_name) == 0) {
+            return subnode;
+        }
+    }
+    return nullptr;
 }
 
 /**
@@ -151,8 +167,7 @@ void filesystem_node_destroy(FileSystemNode* node)
     // 清除data
     if (node->type == File) {
         free_memory(node->data);
-    }
-    else if (node->type == Directory) {
+    } else if (node->type == Directory) {
         // 摧毁所有子节点
         auto subnode_list = (CList*)node->data;
         for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
@@ -161,8 +176,7 @@ void filesystem_node_destroy(FileSystemNode* node)
                 filesystem_node_destroy(clist_iterator_get(it));
             }
         }
-    }
-    else {
+    } else {
         // todo 未知类型
     }
     // 更新parent的指针
@@ -196,16 +210,10 @@ FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeTyp
     // todo 检查参数合法性
     // 检查父节点是否有同名节点
     if (parent != nullptr) {
-        auto parent_subnode_list = (CList*)parent->data;
-        for (auto it = clist_begin(parent_subnode_list); it != clist_end(parent_subnode_list); it =
-             clist_iterator_next(it)) {
-            auto subnode = (FileSystemNode*)clist_iterator_get(it);
-            if (subnode == nullptr)
-                continue;
-            if (subnode->type == type && strcmp(name, subnode->name) == 0) {
-                printf("已有同名同类型节点 \"%s\"\n", name);
-                return nullptr;
-            }
+        auto subnode = filesystem_node_get_subnode(parent, type, name);
+        if (subnode != nullptr) {
+            printf("已有同名同类型节点 \"%s\"\n", name);
+            return nullptr;
         }
     }
 
@@ -215,12 +223,10 @@ FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeTyp
     strcpy(node->name, name);
     if (node->type == File) {
         node->data = data;
-    }
-    else if (node->type == Directory) {
+    } else if (node->type == Directory) {
         /* 创建一个空的目录链表 */
         node->data = clist_create();
-    }
-    else {
+    } else {
         // todo 未知类型
         free_memory(node);
         return nullptr;
@@ -234,10 +240,10 @@ FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeTyp
 }
 
 
-void filesystem_init()
+void filesystem_init(const char* program_path)
 {
     /* 创建或者获取共享内存 */
-    key_t shm_key = ftok(SHM_NAME, 'Z');
+    key_t shm_key = ftok(program_path, 'Z');
     shmid = shmget(shm_key, SHM_SIZE, 0644 | IPC_CREAT);
     if (shmid == -1) {
         perror("shmget failed");
@@ -312,8 +318,7 @@ size_t path_to_parent_path(char* path, size_t size)
         return size;
     }
     // 搜索上一个路径分隔符
-    for (--size; size > 1 && !path_is_sep(path[size]); --size) {
-    }
+    for (--size; size > 1 && !path_is_sep(path[size]); --size) {}
     return size;
 }
 
@@ -392,34 +397,22 @@ bool _cd_parse_sigle_path(const char* name, FileSystemNode* ori_dir, size_t ori_
 {
     if (strcmp(name, ".") == 0) {
         // 当前目录, 不变
-    }
-    else if (strcmp(name, "..") == 0) {
+    } else if (strcmp(name, "..") == 0) {
         // 上一级目录
         if (f->cur_dir != f->root) {
             f->pwd_offset = path_to_parent_path(f->pwd, f->pwd_offset);
             f->cur_dir = f->cur_dir->parent;
-        }
-        else {
+        } else {
             // 根目录的上一级不变
         }
-    }
-    else {
+    } else {
         // 查找是否存在该子目录
-        bool find = false;
-        auto subnode_list = (CList*)f->cur_dir->data;
-        for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
-            auto subnode = (FileSystemNode*)clist_iterator_get(it);
-            if (subnode == nullptr)
-                continue;
-            if (strcmp(name, subnode->name) == 0) {
-                // 找到对应子目录
-                find = true;
-                f->pwd_offset = path_join_path(f->pwd, f->pwd_offset, name);
-                f->cur_dir = subnode;
-                break;
-            }
-        }
-        if (!find) {
+        auto subnode = filesystem_node_get_subnode(f->cur_dir, Directory, name);
+        if (subnode != nullptr) {
+            // 找到对应子目录
+            f->pwd_offset = path_join_path(f->pwd, f->pwd_offset, name);
+            f->cur_dir = subnode;
+        } else {
             // 没有找到对应子目录
             f->cur_dir = ori_dir;
             f->pwd_offset = ori_offset;
@@ -461,8 +454,7 @@ void cd(const char* path)
             // 复位name
             pos = 0;
             name[pos] = '\0';
-        }
-        else {
+        } else {
             // 正常情况下更新name
             name[pos++] = path[i];
         }
@@ -498,21 +490,13 @@ void rmdir(const char* name)
 {
     debug_printf("rmdir %s\n", name);
     pthread_rwlock_wrlock(&f->rwlock);
-    bool ok = false;
     // 搜索node
-    auto subnode_list = (CList*)f->cur_dir->data;
-    for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
-        auto subnode = (FileSystemNode*)clist_iterator_get(it);
-        if (subnode == nullptr)
-            continue;
-        if (subnode->type == Directory && strcmp(name, subnode->name) == 0) {
-            ok = true;
-            filesystem_node_destroy(subnode);
-        }
-    }
-    if (!ok) {
+    auto subnode = filesystem_node_get_subnode(f->cur_dir, Directory, name);
+    if (subnode == nullptr) {
         sprintf(filesystem_error, "rmdir error, dir \"%s\" not exist!", name);
         perror(filesystem_error);
+    } else {
+        filesystem_node_destroy(subnode);
     }
     pthread_rwlock_unlock(&f->rwlock);
     debug_printf("rmdir unlocked\n");
@@ -531,4 +515,77 @@ void ls()
     }
     pthread_rwlock_unlock(&f->rwlock);
     debug_printf("ls unlocked\n");
+}
+
+void create_file(const char* name, const char* data)
+{
+    debug_printf("create_file %s\n", name);
+    pthread_rwlock_wrlock(&f->rwlock);
+    // 为文件内存分配空间
+    char *file_data = nullptr;
+    if (data != nullptr) {
+        auto file_size = strlen(data) + 4;
+        file_data = (char *)alloc_memory(file_size);
+        strcpy(file_data, data);
+    }
+    filesystem_node_create(f->cur_dir, File, name, (void*)file_data);
+    pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("create_file unlocked\n");
+}
+
+void alter_file(const char* name, const char* data)
+{
+    debug_printf("alter_file %s\n", name);
+    pthread_rwlock_wrlock(&f->rwlock);
+    auto subnode = filesystem_node_get_subnode(f->cur_dir, File, name);
+    if (subnode == nullptr) {
+        sprintf(filesystem_error, "alter_file error, dir \"%s\" not exist!", name);
+        perror(filesystem_error);
+    } else {
+        // todo 修改内容较短的情况下可以复用
+        auto old_data = (char*)subnode->data;
+        free_memory(old_data);
+        // 复制新的数据到内存
+        auto data_size = strlen(data) + 4;
+        auto file_data = (char *)alloc_memory(data_size);
+        strcpy(file_data, data);
+        subnode->data = (void*)file_data;
+    }
+    pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("alter_file unlocked\n");
+}
+
+void read_file(const char* name)
+{
+    debug_printf("read_file %s\n", name);
+    pthread_rwlock_wrlock(&f->rwlock);
+    auto subnode = filesystem_node_get_subnode(f->cur_dir, File, name);
+    if (subnode == nullptr) {
+        sprintf(filesystem_error, "read_file error, dir \"%s\" not exist!", name);
+        perror(filesystem_error);
+    } else {
+        auto data = (char*)subnode->data;
+        if (data == nullptr) {
+            printf("\n");
+        } else {
+            printf("%s\n", data);
+        }
+    }
+    pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("read_file unlocked\n");
+}
+
+void remove_file(const char* name)
+{
+    debug_printf("remove_file %s\n", name);
+    pthread_rwlock_wrlock(&f->rwlock);
+    auto subnode = filesystem_node_get_subnode(f->cur_dir, File, name);
+    if (subnode == nullptr) {
+        sprintf(filesystem_error, "remove_file error, dir \"%s\" not exist!", name);
+        perror(filesystem_error);
+    } else {
+        filesystem_node_destroy(subnode);
+    }
+    pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("remove_file unlocked\n");
 }
