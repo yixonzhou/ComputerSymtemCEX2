@@ -91,8 +91,6 @@ static void* _get_and_offset_address(size_t size)
 
 void* alloc_memory(size_t size)
 {
-    /* 写锁 */
-    pthread_rwlock_wrlock(&f->rwlock);
     size_t size_with_metadata = size + sizeof(FileSystemMemoryMetadata);
     /* 检查是否有空闲内存的大小正好可以容纳新分配的内存, 特别的，文件系统未完全初始化时没有unused_nodes */
     if (f->unused_nodes != nullptr) {
@@ -113,8 +111,6 @@ void* alloc_memory(size_t size)
     metadata->size = size_with_metadata;
     /* 分配实际需要的内存 */
     metadata->address = _get_and_offset_address(size);
-
-    pthread_rwlock_unlock(&f->rwlock);
     return metadata->address;
 }
 
@@ -122,19 +118,16 @@ void free_memory(void* mem)
 {
     if (mem == nullptr)
         return;
-    pthread_rwlock_wrlock(&f->rwlock);
     /* 获取内存块metadata */
     auto metadata = (FileSystemMemoryMetadata*)((char*)mem - sizeof(FileSystemMemoryMetadata));
     /* 添加到未使用的内存列表 */
     clist_push_back(f->unused_nodes, metadata);
-    pthread_rwlock_unlock(&f->rwlock);
 }
 
 void filesystem_node_destroy(FileSystemNode* node)
 {
     if (node == nullptr || node == f->root)
         return;
-    pthread_rwlock_wrlock(&f->rwlock);
     // 清除data
     if (node->type == File) {
         free_memory(node->data);
@@ -394,6 +387,8 @@ void cd(const char* path)
     static char name[FILESYSTEM_NODE_NAME_SIZE];
     static char ori_pwd[FILESYSTEM_PWD_SIZE];
 
+    pthread_rwlock_wrlock(&f->rwlock);
+
     // 保留当前目录，方便查找错误后的回溯
     auto ori_dir = f->cur_dir;
     auto ori_offset = f->pwd_offset;
@@ -409,7 +404,7 @@ void cd(const char* path)
             bool success = _cd_parse_sigle_path(name, ori_dir, ori_offset, ori_pwd, path);
             if (!success) {
                 // 发生错误，回溯结构并报错
-                exit(1);
+                break;
             }
             // 复位name
             pos = 0;
@@ -419,9 +414,41 @@ void cd(const char* path)
             name[pos++] = path[i];
         }
     }
+    pthread_rwlock_unlock(&f->rwlock);
 }
 
 void pwd()
 {
+    pthread_rwlock_rdlock(&f->rwlock);
     printf("%s\n", f->pwd);
+    pthread_rwlock_unlock(&f->rwlock);
+}
+
+void mkdir(const char* name)
+{
+    pthread_rwlock_wrlock(&f->rwlock);
+    filesystem_node_create(f->cur_dir, Directory, name, nullptr);
+    pthread_rwlock_unlock(&f->rwlock);
+}
+
+void rmdir(const char* name)
+{
+    pthread_rwlock_wrlock(&f->rwlock);
+    bool ok = false;
+    // 搜索node
+    auto subnode_list = (CList*)f->cur_dir->data;
+    for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
+        auto subnode = (FileSystemNode*)clist_iterator_get(it);
+        if (subnode == nullptr)
+            continue;
+        if (strcmp(name, subnode->name) == 0) {
+            ok = true;
+            filesystem_node_destroy(subnode);
+        }
+    }
+    if (!ok) {
+        sprintf(filesystem_error, "rmdir error, dir \"%s\" not exist!", name);
+        perror(filesystem_error);
+    }
+    pthread_rwlock_unlock(&f->rwlock);
 }
