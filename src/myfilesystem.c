@@ -452,3 +452,14 @@ void rmdir(const char* name)
     }
     pthread_rwlock_unlock(&f->rwlock);
 }
+
+void ls()
+{
+    auto subnode_list = (CList*)f->cur_dir->data;
+    for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
+        auto subnode = (FileSystemNode*)clist_iterator_get(it);
+        if (subnode == nullptr)
+            continue;
+        printf("%s\n", subnode->name);
+    }
+}

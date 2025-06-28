@@ -23,9 +23,9 @@ void cd(const char *path);
 void pwd();
 void mkdir(const char *name);
 void rmdir(const char *name);
+void ls();
 void open(const char *name, const char *data);
 void alert(const char *name, const char *data);
 void rm(const char *name);
-void ls();
 
 #endif //MYFILESYSTEM_H
