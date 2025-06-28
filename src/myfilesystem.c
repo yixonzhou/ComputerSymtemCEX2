@@ -23,7 +23,6 @@ constexpr bool DEBUG = false;
 
 constexpr size_t FILESYSTEM_NODE_NAME_SIZE = 100;
 constexpr size_t FILESYSTEM_PWD_SIZE = FILESYSTEM_NODE_NAME_SIZE * 10;
-char filesystem_error[FILESYSTEM_NODE_NAME_SIZE];
 
 typedef struct FileSystemNode FileSystemNode;
 
@@ -177,7 +176,8 @@ void filesystem_node_destroy(FileSystemNode* node)
             }
         }
     } else {
-        // todo 未知类型
+        // 已被清除的节点
+        return;
     }
     // 更新parent的指针
     auto parent_subnode_list = (CList*)node->parent->data;
@@ -417,8 +417,7 @@ bool _cd_parse_sigle_path(const char* name, FileSystemNode* ori_dir, size_t ori_
             f->cur_dir = ori_dir;
             f->pwd_offset = ori_offset;
             strcpy(f->pwd, ori_pwd);
-            sprintf(filesystem_error, "cd error, dir \"%s\" not exist!", arg_path);
-            perror(filesystem_error);
+            printf("cd error, dir \"%s\" not exist!", arg_path);
             return false;
         }
     }
@@ -439,10 +438,18 @@ void cd(const char* path)
     auto ori_offset = f->pwd_offset;
     strcpy(ori_pwd, f->pwd);
 
-    // 特殊处理绝对目录
     pos = 0;
     name[pos] = '\0';
-    for (int i = 0; path[i] != '\0'; i++) {
+
+    // 特殊处理绝对目录
+    int i = 0;
+    if (path_is_sep(path[0])) {
+        f->cur_dir = f->root;
+        ++i;
+    }
+    // 处理所有其他目录
+
+    for (; path[i] != '\0'; i++) {
         if (path_is_sep(path[i])) {
             // 处理这一级目录操作
             name[pos] = '\0';
@@ -493,8 +500,7 @@ void rmdir(const char* name)
     // 搜索node
     auto subnode = filesystem_node_get_subnode(f->cur_dir, Directory, name);
     if (subnode == nullptr) {
-        sprintf(filesystem_error, "rmdir error, dir \"%s\" not exist!", name);
-        perror(filesystem_error);
+        printf("rmdir error, dir \"%s\" not exist!", name);
     } else {
         filesystem_node_destroy(subnode);
     }
@@ -522,10 +528,10 @@ void create_file(const char* name, const char* data)
     debug_printf("create_file %s\n", name);
     pthread_rwlock_wrlock(&f->rwlock);
     // 为文件内存分配空间
-    char *file_data = nullptr;
+    char* file_data = nullptr;
     if (data != nullptr) {
         auto file_size = strlen(data) + 4;
-        file_data = (char *)alloc_memory(file_size);
+        file_data = (char*)alloc_memory(file_size);
         strcpy(file_data, data);
     }
     filesystem_node_create(f->cur_dir, File, name, (void*)file_data);
@@ -539,15 +545,14 @@ void alter_file(const char* name, const char* data)
     pthread_rwlock_wrlock(&f->rwlock);
     auto subnode = filesystem_node_get_subnode(f->cur_dir, File, name);
     if (subnode == nullptr) {
-        sprintf(filesystem_error, "alter_file error, dir \"%s\" not exist!", name);
-        perror(filesystem_error);
+        printf("alter_file error, dir \"%s\" not exist!", name);
     } else {
         // todo 修改内容较短的情况下可以复用
         auto old_data = (char*)subnode->data;
         free_memory(old_data);
         // 复制新的数据到内存
         auto data_size = strlen(data) + 4;
-        auto file_data = (char *)alloc_memory(data_size);
+        auto file_data = (char*)alloc_memory(data_size);
         strcpy(file_data, data);
         subnode->data = (void*)file_data;
     }
@@ -561,8 +566,7 @@ void read_file(const char* name)
     pthread_rwlock_wrlock(&f->rwlock);
     auto subnode = filesystem_node_get_subnode(f->cur_dir, File, name);
     if (subnode == nullptr) {
-        sprintf(filesystem_error, "read_file error, dir \"%s\" not exist!", name);
-        perror(filesystem_error);
+        printf("read_file error, dir \"%s\" not exist!", name);
     } else {
         auto data = (char*)subnode->data;
         if (data == nullptr) {
@@ -581,8 +585,7 @@ void remove_file(const char* name)
     pthread_rwlock_wrlock(&f->rwlock);
     auto subnode = filesystem_node_get_subnode(f->cur_dir, File, name);
     if (subnode == nullptr) {
-        sprintf(filesystem_error, "remove_file error, dir \"%s\" not exist!", name);
-        perror(filesystem_error);
+        printf("remove_file error, dir \"%s\" not exist!", name);
     } else {
         filesystem_node_destroy(subnode);
     }

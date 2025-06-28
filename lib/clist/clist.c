@@ -91,11 +91,11 @@ CListIterator* clist_insert(CList* clist, CListIterator* prev, void* data)
 
 void clist_pop(CList* clist, CListIterator* iter)
 {
-    // todo 检查list为空的情况
-    --clist->size;
     /* 根节点恒为空，无法删除 */
     if (iter == clist->root)
         return;
+    // todo 检查list为空的情况
+    --clist->size;
     /* 处理前后节点的指向关系，前后节点一定和iter不是同一个节点 */
     iter->prev->next = iter->next;
     iter->next->prev = iter->prev;
