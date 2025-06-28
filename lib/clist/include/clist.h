@@ -64,6 +64,7 @@ void* clist_back(CList* clist);
 // CListIterator迭代器操作
 CListIterator* clist_iterator_next(CListIterator* iter);
 CListIterator* clist_iterator_prev(CListIterator* iter);
-void *clist_iterator_data(CListIterator* iter);
+void *clist_iterator_get(CListIterator* iter);
+void clist_iterator_set(CListIterator* iter, void* data);
 
 #endif //CLIST_H

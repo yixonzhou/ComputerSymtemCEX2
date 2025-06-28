@@ -148,7 +148,12 @@ CListIterator* clist_iterator_prev(CListIterator* iter)
     return iter->prev;
 }
 
-void* clist_iterator_data(CListIterator* iter)
+void* clist_iterator_get(CListIterator* iter)
 {
     return iter->data;
+}
+
+void clist_iterator_set(CListIterator* iter, void* data)
+{
+    iter->data = data;
 }
