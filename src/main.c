@@ -14,25 +14,36 @@ int main(int argc, char *argv[])
     filesystem_init();
 
     // 解析命令行参数，每次只执行一个命令
-    if (strcmp(argv[1], "cd")) {
+    if (strcmp(argv[1], "cd") == 0) {
         if (argc < 3) {
             printf("cd: 请输入需要去的路径\n");
             return 0;
         }
         cd(argv[2]);
-    } else if (strcmp(argv[1], "pwd")) {
+    } else if (strcmp(argv[1], "pwd") == 0) {
         pwd();
-    } else if (strcmp(argv[1], "mkdir")) {
+    } else if (strcmp(argv[1], "mkdir") == 0) {
         if (argc < 3) {
             printf("mkdir: 请输入需要创建的目录名\n");
             return 0;
         }
-    } else if (strcmp(argv[1], "rmdir")) {
+        mkdir(argv[2]);
+    } else if (strcmp(argv[1], "rmdir") == 0) {
         if (argc < 3) {
             printf("mkdir: 请输入需要删除的目录名\n");
             return 0;
         }
         rmdir(argv[2]);
+    } else if (strcmp(argv[1], "ls") == 0) {
+        ls();
+    } else if (strcmp(argv[1], "deinit") == 0) {
+        filesystem_deinit();
+    }
+
+    else if (strcmp(argv[1], "force_deinit") == 0) {
+        filesystem_force_deinit();
+    } else {
+        printf("参数 \"%s\" 错误\n", argv[1]);
     }
 
     return 0;

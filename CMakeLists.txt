@@ -6,8 +6,8 @@ set(CMAKE_C_STANDARD 23)
 add_subdirectory(lib)
 
 file(GLOB_RECURSE src_files src/*.c)
-add_executable(main ${src_files})
+add_executable(f ${src_files})
 
-target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(f PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-target_link_libraries(main clist)
+target_link_libraries(f clist)

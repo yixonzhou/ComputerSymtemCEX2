@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "clist.h"
 #include <sys/ipc.h>
@@ -31,6 +32,11 @@ typedef enum FileSystemNodeType
     Directory,
 } FileSystemNodeType;
 
+const char *FileSystemNodeTypeNames[] = {
+    "file",
+    "directory",
+};
+
 /**
  * 存储内存的元数据，包含内存的实际大小信息和内存实际可用的地址
  */
@@ -40,13 +46,13 @@ typedef struct FileSystemMemoryMetadata
     void* address;
 } FileSystemMemoryMetadata;
 
-typedef struct FileSystemNode
+struct FileSystemNode
 {
     FileSystemNode* parent; /* 父节点指针 */
     FileSystemNodeType type; /* 节点类型 */
     char name[FILESYSTEM_NODE_NAME_SIZE]; /* 文件或路径名 */
     void* data; /* 对于目录，这个是一个CList, 存储子节点; 对于文件，这里存储文件数据 */
-} FileSystemNode;
+};
 
 struct FileSystem
 {
@@ -61,12 +67,26 @@ struct FileSystem
 };
 
 const int SHM_SIZE = 100 * 1024 * 1024;
-const key_t SHM_KEY = 12345;
+constexpr int DEBUG_FORMAT_SIZE = 1024;
+const char SHM_NAME[] = "../shm/computer_system_shm";
 const size_t MAGIC_NUMBER_INITED = 0xDEADBEEF, MAGIC_NUMBER_DEINITED = ~MAGIC_NUMBER_INITED;
 const void* SHM_ADDR = (void*)0x0000700000000000;
+int shmid = 0;
 
 /* 共享内存的首地址存储该结构 */
 FileSystem* f = nullptr;
+
+static int debug_printf(const char *format, ...) __attribute__((format(printf, 1, 2)));
+
+static int debug_printf(const char *format, ...)
+{
+    static char debug_format[DEBUG_FORMAT_SIZE];
+    va_list args;
+    va_start(args);
+    // 生成新的格式化字符串, 改变字体颜色
+    sprintf(debug_format, "\033[34m%s\033[0m", format);
+    return vprintf(debug_format, args);
+}
 
 /**
  * 获取当前空内存指针，禁止外部调用
@@ -173,10 +193,22 @@ void filesystem_node_destroy(FileSystemNode* node)
  */
 FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeType type, const char* name, void* data)
 {
-    if (parent == nullptr) {
-        return nullptr;
-    }
     // todo 检查参数合法性
+    // 检查父节点是否有同名节点
+    if (parent != nullptr) {
+        auto parent_subnode_list = (CList*)parent->data;
+        for (auto it = clist_begin(parent_subnode_list); it != clist_end(parent_subnode_list); it =
+             clist_iterator_next(it)) {
+            auto subnode = (FileSystemNode*)clist_iterator_get(it);
+            if (subnode == nullptr)
+                continue;
+            if (subnode->type == type && strcmp(name, subnode->name) == 0) {
+                printf("已有同名同类型节点 \"%s\"\n", name);
+                return nullptr;
+            }
+        }
+    }
+
     auto node = (FileSystemNode*)alloc_memory(sizeof(FileSystemNode));
     node->parent = parent;
     node->type = type;
@@ -186,12 +218,17 @@ FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeTyp
     }
     else if (node->type == Directory) {
         /* 创建一个空的目录链表 */
-        node->data = clist_create(alloc_memory, free_memory, filesystem_node_destroy);
+        node->data = clist_create(alloc_memory, free_memory, (clist_mem_deallocator)filesystem_node_destroy);
     }
     else {
         // todo 未知类型
         free_memory(node);
         return nullptr;
+    }
+    // 更新父节点的子节点列表
+    if (parent != nullptr) {
+        auto parent_subnode_list = (CList*)parent->data;
+        clist_push_back(parent_subnode_list, node);
     }
     return node;
 }
@@ -200,7 +237,8 @@ FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeTyp
 void filesystem_init()
 {
     /* 创建或者获取共享内存 */
-    int shmid = shmget(SHM_KEY, SHM_SIZE, 0644);
+    key_t shm_key = ftok(SHM_NAME, 'Z');
+    shmid = shmget(shm_key, SHM_SIZE, 0644 | IPC_CREAT);
     if (shmid == -1) {
         perror("shmget failed");
         exit(1);
@@ -244,7 +282,7 @@ void filesystem_init()
         f->cur_dir = nullptr;
 
         /* 创建释放后的内存列表 */
-        f->unused_nodes = clist_create(alloc_memory, free_memory, filesystem_node_destroy);
+        f->unused_nodes = clist_create(alloc_memory, free_memory, (clist_mem_deallocator)filesystem_node_destroy);
 
         /* 创建根目录 */
         f->root = filesystem_node_create(nullptr, Directory, "/", nullptr);
@@ -293,19 +331,18 @@ size_t path_join_path(char* path, size_t size, const char* new_path)
     for (size_t i = 0; new_path[i] != '\0'; ++i) {
         path[++size] = new_path[i];
     }
+    path[++size] = '/';
     path[++size] = '\0';
     return size;
 }
 
-void filesystem_deinit()
+void filesystem_force_deinit()
 {
+    debug_printf("filesystem_force_deinit\n");
     if (f == nullptr)
         return;
-    /* 防止有进程在使用 */
-    pthread_rwlock_wrlock(&f->rwlock);
     /* 防止后续重新分配到这块内存时被误认为已初始化 */
     f->magic_number = MAGIC_NUMBER_DEINITED;
-    pthread_rwlock_unlock(&f->rwlock);
     // todo 销毁过程中又有进程使用共享内存怎么办
     /* 反初始化共享锁 */
     pthread_rwlock_destroy(&f->rwlock);
@@ -316,7 +353,6 @@ void filesystem_deinit()
     }
 
     // 3. 获取共享内存ID以便删除
-    int shmid = shmget(SHM_KEY, SHM_SIZE, 0644);
     if (shmid == -1) {
         perror("shmget for deletion failed");
         return;
@@ -326,6 +362,20 @@ void filesystem_deinit()
     if (shmctl(shmid, IPC_RMID, nullptr) == -1) {
         perror("shmctl IPC_RMID failed");
     }
+    debug_printf("filesystem_force_deinit unlocked\n");
+}
+
+void filesystem_deinit()
+{
+    debug_printf("filesystem_deinit\n");
+    if (f == nullptr)
+        return;
+    /* 防止有进程在使用 */
+    pthread_rwlock_wrlock(&f->rwlock);
+    pthread_rwlock_unlock(&f->rwlock);
+    // todo 销毁过程中又有进程使用共享内存怎么办
+    filesystem_force_deinit();
+    debug_printf("filesystem_deinit unlocked\n");
 }
 
 /**
@@ -337,7 +387,8 @@ void filesystem_deinit()
  * @param arg_path 出错的参数
  * @return 是否成功
  */
-bool _cd_parse_sigle_path(const char* name, FileSystemNode *ori_dir, size_t ori_offset, const char* ori_pwd, const char* arg_path)
+bool _cd_parse_sigle_path(const char* name, FileSystemNode* ori_dir, size_t ori_offset, const char* ori_pwd,
+                          const char* arg_path)
 {
     if (strcmp(name, ".") == 0) {
         // 当前目录, 不变
@@ -383,6 +434,7 @@ bool _cd_parse_sigle_path(const char* name, FileSystemNode *ori_dir, size_t ori_
 
 void cd(const char* path)
 {
+    debug_printf("cd: %s\n", path);
     static size_t pos;
     static char name[FILESYSTEM_NODE_NAME_SIZE];
     static char ori_pwd[FILESYSTEM_PWD_SIZE];
@@ -401,38 +453,50 @@ void cd(const char* path)
         if (path_is_sep(path[i])) {
             // 处理这一级目录操作
             name[pos] = '\0';
-            bool success = _cd_parse_sigle_path(name, ori_dir, ori_offset, ori_pwd, path);
-            if (!success) {
+            bool unlocked = _cd_parse_sigle_path(name, ori_dir, ori_offset, ori_pwd, path);
+            if (!unlocked) {
                 // 发生错误，回溯结构并报错
                 break;
             }
             // 复位name
             pos = 0;
             name[pos] = '\0';
-        } else {
+        }
+        else {
             // 正常情况下更新name
             name[pos++] = path[i];
         }
     }
+    // 处理最后一级目录
+    if (pos > 0) {
+        name[pos] = '\0';
+        _cd_parse_sigle_path(name, ori_dir, ori_offset, ori_pwd, path);
+    }
     pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("cd: %s unlocked\n", name);
 }
 
 void pwd()
 {
+    debug_printf("pwd\n");
     pthread_rwlock_rdlock(&f->rwlock);
     printf("%s\n", f->pwd);
     pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("pwd unlocked\n");
 }
 
 void mkdir(const char* name)
 {
+    debug_printf("mkdir %s\n", name);
     pthread_rwlock_wrlock(&f->rwlock);
     filesystem_node_create(f->cur_dir, Directory, name, nullptr);
     pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("mkdir unlocked\n");
 }
 
 void rmdir(const char* name)
 {
+    printf("rmdir %s\n", name);
     pthread_rwlock_wrlock(&f->rwlock);
     bool ok = false;
     // 搜索node
@@ -451,15 +515,20 @@ void rmdir(const char* name)
         perror(filesystem_error);
     }
     pthread_rwlock_unlock(&f->rwlock);
+    printf("rmdir unlocked\n");
 }
 
 void ls()
 {
+    debug_printf("ls\n");
+    pthread_rwlock_rdlock(&f->rwlock);
     auto subnode_list = (CList*)f->cur_dir->data;
     for (auto it = clist_begin(subnode_list); it != clist_end(subnode_list); it = clist_iterator_next(it)) {
         auto subnode = (FileSystemNode*)clist_iterator_get(it);
         if (subnode == nullptr)
             continue;
-        printf("%s\n", subnode->name);
+        printf("%s  type=%s\n", subnode->name, FileSystemNodeTypeNames[subnode->type]);
     }
+    pthread_rwlock_unlock(&f->rwlock);
+    debug_printf("ls unlocked\n");
 }
