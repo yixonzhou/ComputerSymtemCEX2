@@ -218,7 +218,7 @@ FileSystemNode* filesystem_node_create(FileSystemNode* parent, FileSystemNodeTyp
     }
     else if (node->type == Directory) {
         /* 创建一个空的目录链表 */
-        node->data = clist_create(alloc_memory, free_memory, (clist_mem_deallocator)filesystem_node_destroy);
+        node->data = clist_create();
     }
     else {
         // todo 未知类型
@@ -282,7 +282,7 @@ void filesystem_init()
         f->cur_dir = nullptr;
 
         /* 创建释放后的内存列表 */
-        f->unused_nodes = clist_create(alloc_memory, free_memory, (clist_mem_deallocator)filesystem_node_destroy);
+        f->unused_nodes = clist_create();
 
         /* 创建根目录 */
         f->root = filesystem_node_create(nullptr, Directory, "/", nullptr);
@@ -496,7 +496,7 @@ void mkdir(const char* name)
 
 void rmdir(const char* name)
 {
-    printf("rmdir %s\n", name);
+    debug_printf("rmdir %s\n", name);
     pthread_rwlock_wrlock(&f->rwlock);
     bool ok = false;
     // 搜索node
@@ -505,7 +505,7 @@ void rmdir(const char* name)
         auto subnode = (FileSystemNode*)clist_iterator_get(it);
         if (subnode == nullptr)
             continue;
-        if (strcmp(name, subnode->name) == 0) {
+        if (subnode->type == Directory && strcmp(name, subnode->name) == 0) {
             ok = true;
             filesystem_node_destroy(subnode);
         }
@@ -515,7 +515,7 @@ void rmdir(const char* name)
         perror(filesystem_error);
     }
     pthread_rwlock_unlock(&f->rwlock);
-    printf("rmdir unlocked\n");
+    debug_printf("rmdir unlocked\n");
 }
 
 void ls()
